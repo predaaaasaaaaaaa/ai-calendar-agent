@@ -52,3 +52,36 @@ class EventConfirmation(BaseModel):
     calendar_link: Optional[str] = Field(
         description="Generated calendar link if applicable"
     )
+
+
+# Step 2: Define the functions
+
+
+def extract_event_info(user_input: str) -> EventExtraction:
+    """ "First LLM call to determine if input is a calendar event"""
+    logger.info("Starting event extraction analysis")
+    logger.debug(f"Input text: {user_input}")
+
+    today = datetime.now()
+    date_context = f"Today is {today.strftime('%A, %B, %Y')}."
+
+    result = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": f"{date_context} Anaslyze if the text describes a calenar event.",
+            },
+            {"role": "user", "content": user_input},
+        ],
+        response_format=EventExtraction,
+    )
+
+    logger.info(
+        f"Extraction complete - is calendar event: {result.is_calendar_event}, "
+        f"Confidence: {result.confidence_score:.2f}"
+    )
+    return result
+
+
+
