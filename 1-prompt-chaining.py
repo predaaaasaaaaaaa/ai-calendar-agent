@@ -74,7 +74,7 @@ def extract_event_info(user_input: str) -> EventExtraction:
             },
             {"role": "user", "content": user_input},
         ],
-        response_format=EventExtraction,
+        response_model=EventExtraction,
     )
 
     logger.info(
@@ -86,12 +86,12 @@ def extract_event_info(user_input: str) -> EventExtraction:
 
 def parse_event_details(description: str) -> EventDetails:
     """Secone LLM call to  extarct specific event details"""
-    logger.imfo("Starting event details parsing")
+    logger.info("Starting event details parsing")
 
     today = datetime.now()
     date_context = f"Today is {today.strftime('%A, %B %d, %Y')}."
 
-    result = client.chat.cmpletions.create(
+    result = client.chat.completions.create(
         model=model,
         messages=[
             {
@@ -100,7 +100,7 @@ def parse_event_details(description: str) -> EventDetails:
             },
             {"role": "user", "content": description},
         ],
-        response_format=EventDetails,
+        response_model=EventDetails,
     )
 
     logger.info(
@@ -114,7 +114,7 @@ def generate_confirmaion(event_details: EventDetails) -> EventConfirmation:
     """Third LLM call to generate a confirmation message"""
     logger.info("Generating confirmation message")
 
-    result = client.chat.comletions.create(
+    result = client.chat.completions.create(
         model=model,
         messages=[
             {
@@ -123,7 +123,7 @@ def generate_confirmaion(event_details: EventDetails) -> EventConfirmation:
             },
             {"role": "user", "content": str(event_details.model_dump())},
         ],
-        respnse_format=EventConfirmation,
+        response_model=EventConfirmation,
     )
 
     logger.info("Confirmation message generated successfully")
@@ -171,7 +171,7 @@ result = process_calendar_request(user_input)
 if result:
     print(f"Confirmation: {result.confirmation_message}")
     if result.calendar_link:
-        print: f"Calendar Link: {result.calendar_link}"
+        print(f"Calendar Link: {result.calendar_link}")
 
     else:
         print("This doesn't appear to be a calendar event request.")
@@ -187,7 +187,7 @@ result = process_calendar_request(user_input)
 if result:
     print(f"Confirmation: {result.confirmation_message}")
     if result.calendar_link:
-        print: f"Calendar Link: {result.calendar_link}"
+        print(f"Calendar Link: {result.calendar_link}")
 
     else:
         print("This doesn't appear to be a calendar event request.")
