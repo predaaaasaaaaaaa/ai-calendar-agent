@@ -128,3 +128,66 @@ def generate_confirmaion(event_details: EventDetails) -> EventConfirmation:
 
     logger.info("Confirmation message generated successfully")
     return result
+
+
+# Step 3: Chain the fuctions together
+
+
+def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
+    """Main Function implementing the prompt chain with gate check"""
+    logger.info("Processing calendar request")
+    logger.debug(f"Raw input: {user_input}")
+
+    # First LLM call: Extract basic info
+    initial_extraction = extract_event_info(user_input)
+
+    # Gate check: Verify if it's a calendar event with sufficient confidence
+    if (
+        not initial_extraction.is_calendar_event
+        or initial_extraction.confidence_score < 0.7
+    ):
+        logger.warning(
+            f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, confidence: {initial_extraction.confidence_score:.2f}"
+        )
+        return None
+
+    logger.info("Gate check passed, processing with event processing")
+
+    # Second LLM call: Get detailed event information
+    event_details = parse_event_details(initial_extraction.description)
+
+    # Third LLM call: Generate confirmation
+    confirmation = generate_confirmaion(event_details)
+
+    logger.info("Calendar request processing completed successfully")
+    return confirmation
+
+
+# Step 4: Test the chain with a valid input
+
+user_input = "Let's schedule a 1h team meeting next Tuesday at 2pm with Alice and Bob to discuss the project roadmap."
+
+result = process_calendar_request(user_input)
+if result:
+    print(f"Confirmation: {result.confirmation_message}")
+    if result.calendar_link:
+        print: f"Calendar Link: {result.calendar_link}"
+
+    else:
+        print("This doesn't appear to be a calendar event request.")
+
+
+# Step 5: Test the chain with an invalid input
+
+user_input = (
+    "Cam you send an e-mail to Alice and Bob to discuss about the project roadmap?"
+)
+
+result = process_calendar_request(user_input)
+if result:
+    print(f"Confirmation: {result.confirmation_message}")
+    if result.calendar_link:
+        print: f"Calendar Link: {result.calendar_link}"
+
+    else:
+        print("This doesn't appear to be a calendar event request.")
