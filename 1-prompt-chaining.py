@@ -28,7 +28,7 @@ client = instructor.from_groq(Groq(api_key=os.getenv("GROQ_API_KEY")))
 model = "llama-3.3-70b-versatile"
 
 
-# Step 1: Define the data mdels for each stage
+# Step 1: Define the data models for each stage
 
 
 class EventExtraction(BaseModel):
@@ -42,24 +42,32 @@ class EventExtraction(BaseModel):
 
 
 class EventDetails(BaseModel):
-    """Second LLM call: Past specific event details"""
+    """Second LLM call: Parse specific event details"""
 
     name: str = Field(description="Name of the event")
     date: str = Field(
-        description="Date and time of the event. Use ISO 8601 to format this value."
+        description="Date and time of the event. Use ISO 8601 format (YYYY-MM-DDTHH:MM:SS)."
     )
     duration_minutes: int = Field(description="Expected duration in minutes")
-    participants: list[str] = Field(description="List of participants")
+    participants: list[str] = Field(
+        description="List of participant email addresses. If only names are given, return empty list."
+    )
+    location: Optional[str] = Field(
+        description="Location of the event if mentioned", default=None
+    )
+    description: Optional[str] = Field(
+        description="Additional details about the event", default=None
+    )
 
 
 class EventConfirmation(BaseModel):
     """Third LLM call: Generate confirmation message"""
 
     confirmation_message: str = Field(
-        description="Natural language confirmatoin message"
+        description="Natural language confirmation message"
     )
     calendar_link: Optional[str] = Field(
-        description="Generated calendar link if applicable"
+        description="Google Calendar event link", default=None
     )
 
 
