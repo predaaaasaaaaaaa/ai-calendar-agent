@@ -1,11 +1,16 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from groq import Groq
 import os
 import logging
 import instructor
-
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+import json
 
 # Set up logging configuration
 logging.basicConfig(
@@ -15,6 +20,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Google Calendar API scopes
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+# Initialize Groq client with Instructor
 client = instructor.from_groq(Groq(api_key=os.getenv("GROQ_API_KEY")))
 model = "llama-3.3-70b-versatile"
 
