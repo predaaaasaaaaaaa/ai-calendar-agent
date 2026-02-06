@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 from groq import Groq
 import os
 import logging
+import instructor
+
 
 # Set up logging configuration
 logging.basicCondig(
