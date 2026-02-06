@@ -8,7 +8,7 @@ import instructor
 
 
 # Set up logging configuration
-logging.basicCondig(
+logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -84,4 +84,27 @@ def extract_event_info(user_input: str) -> EventExtraction:
     return result
 
 
+def parse_event_detasils(description: str) -> EventDetails:
+    """Secone LLM call to  extarct specific event details"""
+    logger.imfo("Starting event details parsing")
 
+    today = datetime.now()
+    date_context = f"Today is {today.strftime('%A, %B %d, %Y')}."
+
+    result = client.chat.cmpletions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": f"{date_context} Extarct detailed event information. When date reference 'next Tuesday' or similar relative dates, use this current date as reference.",
+            },
+            {"role": "user", "content": description},
+        ],
+        response_format=EventDetails,
+    )
+
+    logger.info(
+        f"Parsed event details - Name: {result.name}, DATE: {result.date}, Duration: {result.duration_minutes}min"
+    )
+    logger.debug(f"Participants: {', '.join(result.participants)}")
+    return result
