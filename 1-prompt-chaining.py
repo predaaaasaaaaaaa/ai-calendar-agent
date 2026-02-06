@@ -71,7 +71,109 @@ class EventConfirmation(BaseModel):
     )
 
 
-# Step 2: Define the functions
+# Step 2: Google Calendar Authentication
+
+
+def get_calendar_service():
+    """Authenticate and return Google Calendar service"""
+    creds = None
+
+    # Token file stores user's access and refresh tokens
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+
+    # If no valid credentials, let user log in
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            logger.info("Refreshing expired credentials")
+            creds.refresh(Request())
+        else:
+            if not os.path.exists("credentials.json"):
+                logger.error(
+                    "credentials.json not found! Please download it from Google Cloud Console."
+                )
+                logger.error("Visit: https://console.cloud.google.com/apis/credentials")
+                raise FileNotFoundError(
+                    "credentials.json is required for Google Calendar access"
+                )
+
+            logger.info("Starting OAuth flow - browser will open for authorization")
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        # Save credentials for next run
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+        logger.info("Credentials saved to token.json")
+
+    return build("calendar", "v3", credentials=creds)
+
+
+# Step 3: Create actual Google Calendar event
+
+
+def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
+    """Create an actual event in Google Calendar and return the event link"""
+    try:
+        service = get_calendar_service()
+
+        # Parse the ISO datetime
+        start_time = datetime.fromisoformat(event_details.date)
+        end_time = start_time + timedelta(minutes=event_details.duration_minutes)
+
+        # Prepare event body for Google Calendar API
+        event_body = {
+            "summary": event_details.name,
+            "start": {
+                "dateTime": start_time.isoformat(),
+                "timeZone": "UTC",  # You can make this configurable
+            },
+            "end": {
+                "dateTime": end_time.isoformat(),
+                "timeZone": "UTC",
+            },
+        }
+
+        # Add location if provided
+        if event_details.location:
+            event_body["location"] = event_details.location
+
+        # Add description if provided
+        if event_details.description:
+            event_body["description"] = event_details.description
+
+        # Add attendees if email addresses were provided
+        if event_details.participants:
+            event_body["attendees"] = [
+                {"email": email} for email in event_details.participants
+            ]
+
+        # Create the event
+        logger.info(f"Creating calendar event: {event_details.name}")
+        created_event = (
+            service.events()
+            .insert(
+                calendarId="primary",
+                body=event_body,
+                sendUpdates="all" if event_details.participants else "none",
+            )
+            .execute()
+        )
+
+        event_link = created_event.get("htmlLink")
+        logger.info(f"✅ Event created successfully! Link: {event_link}")
+
+        return event_link
+
+    except HttpError as error:
+        logger.error(f"Google Calendar API error: {error}")
+        return None
+    except Exception as error:
+        logger.error(f"Failed to create calendar event: {error}")
+        return None
+
+
+# Step 4: Define the LLM functions
 
 
 def extract_event_info(user_input: str) -> EventExtraction:
@@ -147,7 +249,7 @@ def generate_confirmaion(event_details: EventDetails) -> EventConfirmation:
     return result
 
 
-# Step 3: Chain the fuctions together
+# Step 5: Chain the fuctions together
 
 
 def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
@@ -180,7 +282,7 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
     return confirmation
 
 
-# Step 4: Test the chain with a valid input
+# Step 6: Test the chain with a valid input
 
 user_input = "Let's schedule a 1h team meeting next Tuesday at 2pm with Alice and Bob to discuss the project roadmap."
 
@@ -194,7 +296,7 @@ if result:
         print("This doesn't appear to be a calendar event request.")
 
 
-# Step 5: Test the chain with an invalid input
+# Step 7: Test the chain with an invalid input
 
 user_input = (
     "Cam you send an e-mail to Alice and Bob to discuss about the project roadmap?"
