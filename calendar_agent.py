@@ -83,28 +83,28 @@ class EventConfirmation(BaseModel):
 def get_calendar_service():
     """Authenticate and return Google Calendar service"""
     creds = None
-    
+
     # Check if credentials.json exists
-    if not os.path.exists('credentials.json'):
+    if not os.path.exists("credentials.json"):
         logger.error("❌ credentials.json not found!")
         logger.error("Please download it from Google Cloud Console:")
         logger.error("https://console.cloud.google.com/apis/credentials")
         raise FileNotFoundError("credentials.json is required")
-    
+
     logger.info("Found credentials.json")
-    
+
     # Token file stores user's access and refresh tokens
-    if os.path.exists('token.json'):
+    if os.path.exists("token.json"):
         logger.info("Loading existing token.json")
         try:
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
             logger.info("Token loaded successfully")
         except Exception as e:
             logger.error(f"Error loading token.json: {e}")
             logger.info("Deleting invalid token.json")
-            os.remove('token.json')
+            os.remove("token.json")
             creds = None
-    
+
     # If no valid credentials, let user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -115,31 +115,33 @@ def get_calendar_service():
             except Exception as e:
                 logger.error(f"Failed to refresh token: {e}")
                 logger.info("Starting new OAuth flow")
-                if os.path.exists('token.json'):
-                    os.remove('token.json')
+                if os.path.exists("token.json"):
+                    os.remove("token.json")
                 creds = None
-        
+
         if not creds:
             logger.info("🌐 Starting OAuth flow - browser will open for authorization")
             try:
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    "credentials.json", SCOPES
+                )
                 creds = flow.run_local_server(port=0)
                 logger.info("✅ Authentication successful!")
             except Exception as e:
                 logger.error(f"❌ OAuth flow failed: {e}")
                 raise
-        
+
         # Save credentials for next run
         try:
-            with open('token.json', 'w') as token:
+            with open("token.json", "w") as token:
                 token.write(creds.to_json())
             logger.info("✅ Credentials saved to token.json")
         except Exception as e:
             logger.error(f"Failed to save token: {e}")
-    
+
     # Build and return the service
     try:
-        service = build('calendar', 'v3', credentials=creds)
+        service = build("calendar", "v3", credentials=creds)
         logger.info("✅ Google Calendar service initialized")
         return service
     except Exception as e:
@@ -153,6 +155,7 @@ def get_calendar_service():
 def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
     """Create an actual event in Google Calendar and return the event link"""
     try:
+        logger.info("Initializing Google Calendar service...")
         service = get_calendar_service()
 
         # Parse the ISO datetime
@@ -164,7 +167,7 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
             "summary": event_details.name,
             "start": {
                 "dateTime": start_time.isoformat(),
-                "timeZone": "UTC",  # You can make this configurable
+                "timeZone": "UTC",
             },
             "end": {
                 "dateTime": end_time.isoformat(),
@@ -186,6 +189,9 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
                 {"email": email} for email in event_details.participants
             ]
 
+        # Debug: Show what we're sending
+        logger.debug(f"Event body: {json.dumps(event_body, indent=2)}")
+
         # Create the event
         logger.info(f"Creating calendar event: {event_details.name}")
         created_event = (
@@ -205,9 +211,19 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
 
     except HttpError as error:
         logger.error(f"Google Calendar API error: {error}")
+        logger.error(
+            f"Error details: {error.error_details if hasattr(error, 'error_details') else 'No details'}"
+        )
+        return None
+    except FileNotFoundError as error:
+        logger.error(f"Setup error: {error}")
         return None
     except Exception as error:
         logger.error(f"Failed to create calendar event: {error}")
+        logger.error(f"Error type: {type(error).__name__}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
