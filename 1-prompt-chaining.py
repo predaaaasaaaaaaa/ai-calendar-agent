@@ -84,7 +84,7 @@ def extract_event_info(user_input: str) -> EventExtraction:
     return result
 
 
-def parse_event_detasils(description: str) -> EventDetails:
+def parse_event_details(description: str) -> EventDetails:
     """Secone LLM call to  extarct specific event details"""
     logger.imfo("Starting event details parsing")
 
@@ -107,4 +107,24 @@ def parse_event_detasils(description: str) -> EventDetails:
         f"Parsed event details - Name: {result.name}, DATE: {result.date}, Duration: {result.duration_minutes}min"
     )
     logger.debug(f"Participants: {', '.join(result.participants)}")
+    return result
+
+
+def generate_confirmaion(event_details: EventDetails) -> EventConfirmation:
+    """Third LLM call to generate a confirmation message"""
+    logger.info("Generating confirmation message")
+
+    result = client.chat.comletions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": "Generate a natural confirmation message for the event. Sign of with your name; Preda",
+            },
+            {"role": "user", "content": str(event_details.model_dump())},
+        ],
+        respnse_format=EventConfirmation,
+    )
+
+    logger.info("Confirmation message generated successfully")
     return result
