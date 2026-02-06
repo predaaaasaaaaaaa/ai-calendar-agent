@@ -83,36 +83,68 @@ class EventConfirmation(BaseModel):
 def get_calendar_service():
     """Authenticate and return Google Calendar service"""
     creds = None
-
+    
+    # Check if credentials.json exists
+    if not os.path.exists('credentials.json'):
+        logger.error("❌ credentials.json not found!")
+        logger.error("Please download it from Google Cloud Console:")
+        logger.error("https://console.cloud.google.com/apis/credentials")
+        raise FileNotFoundError("credentials.json is required")
+    
+    logger.info("Found credentials.json")
+    
     # Token file stores user's access and refresh tokens
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-
+    if os.path.exists('token.json'):
+        logger.info("Loading existing token.json")
+        try:
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            logger.info("Token loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading token.json: {e}")
+            logger.info("Deleting invalid token.json")
+            os.remove('token.json')
+            creds = None
+    
     # If no valid credentials, let user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            logger.info("Refreshing expired credentials")
-            creds.refresh(Request())
-        else:
-            if not os.path.exists("credentials.json"):
-                logger.error(
-                    "credentials.json not found! Please download it from Google Cloud Console."
-                )
-                logger.error("Visit: https://console.cloud.google.com/apis/credentials")
-                raise FileNotFoundError(
-                    "credentials.json is required for Google Calendar access"
-                )
-
-            logger.info("Starting OAuth flow - browser will open for authorization")
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            creds = flow.run_local_server(port=0)
-
+            logger.info("Token expired, refreshing...")
+            try:
+                creds.refresh(Request())
+                logger.info("Token refreshed successfully")
+            except Exception as e:
+                logger.error(f"Failed to refresh token: {e}")
+                logger.info("Starting new OAuth flow")
+                if os.path.exists('token.json'):
+                    os.remove('token.json')
+                creds = None
+        
+        if not creds:
+            logger.info("🌐 Starting OAuth flow - browser will open for authorization")
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+                logger.info("✅ Authentication successful!")
+            except Exception as e:
+                logger.error(f"❌ OAuth flow failed: {e}")
+                raise
+        
         # Save credentials for next run
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
-        logger.info("Credentials saved to token.json")
-
-    return build("calendar", "v3", credentials=creds)
+        try:
+            with open('token.json', 'w') as token:
+                token.write(creds.to_json())
+            logger.info("✅ Credentials saved to token.json")
+        except Exception as e:
+            logger.error(f"Failed to save token: {e}")
+    
+    # Build and return the service
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        logger.info("✅ Google Calendar service initialized")
+        return service
+    except Exception as e:
+        logger.error(f"❌ Failed to build Calendar service: {e}")
+        raise
 
 
 # Step 3: Create actual Google Calendar event
