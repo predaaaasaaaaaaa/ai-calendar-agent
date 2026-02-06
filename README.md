@@ -181,6 +181,41 @@ This is the most important part! Follow carefully:
    └── ...
 ```
 
+3. **⚠️ IMPORTANT: Verify the file structure**
+
+   Open `credentials.json` in VS Code or any text editor. The downloaded file might be all on one line. It should look like this:
+
+   **✅ CORRECT structure:**
+```json
+   {
+     "installed": {
+       "client_id": "xxxxx.apps.googleusercontent.com",
+       "project_id": "calendar-ai-agent",
+       "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+       "token_uri": "https://oauth2.googleapis.com/token",
+       "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+       "client_secret": "GOCSPX-xxxxxxxxxxxxxxxxxxxxx",
+       "redirect_uris": ["http://localhost"]
+     }
+   }
+```
+
+   **❌ WRONG - If it says "web" instead of "installed":**
+```json
+   {
+     "web": {
+       ...
+     }
+   }
+```
+   This means you created **Web application** credentials instead of **Desktop app**. Go back to Step 6.4 and create Desktop app credentials.
+
+   **📝 Note:** If your `credentials.json` is all on one line (like `{"installed":{"client_id":"xxxxx",...}}`), that's okay - it will still work! But formatting it makes it easier to read and verify. In VS Code, you can auto-format it:
+   - Open `credentials.json`
+   - Press `Shift + Alt + F` (Windows/Linux) or `Shift + Option + F` (Mac)
+   - Or right-click → "Format Document"
+```
+
 ---
 
 ### Step 7: Run the Agent! 🎉
