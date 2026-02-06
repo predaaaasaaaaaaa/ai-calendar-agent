@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import os
 from typing import Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
@@ -11,6 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import json
+
 
 # Set up logging configuration
 logging.basicConfig(
