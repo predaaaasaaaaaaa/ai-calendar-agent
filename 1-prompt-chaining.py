@@ -177,19 +177,19 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
 
 
 def extract_event_info(user_input: str) -> EventExtraction:
-    """ "First LLM call to determine if input is a calendar event"""
+    """First LLM call to determine if input is a calendar event"""
     logger.info("Starting event extraction analysis")
     logger.debug(f"Input text: {user_input}")
 
     today = datetime.now()
-    date_context = f"Today is {today.strftime('%A, %B, %Y')}."
+    date_context = f"Today is {today.strftime('%A, %B %d, %Y')}."
 
     result = client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": f"{date_context} Anaslyze if the text describes a calenar event.",
+                "content": f"{date_context} Analyze if the text describes a calendar event.",
             },
             {"role": "user", "content": user_input},
         ],
@@ -204,7 +204,7 @@ def extract_event_info(user_input: str) -> EventExtraction:
 
 
 def parse_event_details(description: str) -> EventDetails:
-    """Secone LLM call to  extarct specific event details"""
+    """Second LLM call to extract specific event details"""
     logger.info("Starting event details parsing")
 
     today = datetime.now()
@@ -215,7 +215,15 @@ def parse_event_details(description: str) -> EventDetails:
         messages=[
             {
                 "role": "system",
-                "content": f"{date_context} Extarct detailed event information. When date reference 'next Tuesday' or similar relative dates, use this current date as reference.",
+                "content": f"""{date_context} Extract detailed event information. 
+                
+Important rules:
+- When dates reference 'next Tuesday' or similar relative dates, use the current date as reference
+- For participants, ONLY include email addresses if explicitly provided. If only names are given (like 'Alice' or 'Bob'), return an empty participants list
+- Use ISO 8601 format for dates (YYYY-MM-DDTHH:MM:SS)
+- If no specific time is mentioned, default to 09:00:00
+- If duration is not mentioned, default to 60 minutes
+""",
             },
             {"role": "user", "content": description},
         ],
@@ -225,25 +233,35 @@ def parse_event_details(description: str) -> EventDetails:
     logger.info(
         f"Parsed event details - Name: {result.name}, DATE: {result.date}, Duration: {result.duration_minutes}min"
     )
-    logger.debug(f"Participants: {', '.join(result.participants)}")
+    if result.participants:
+        logger.debug(f"Participants: {', '.join(result.participants)}")
     return result
 
 
-def generate_confirmaion(event_details: EventDetails) -> EventConfirmation:
+def generate_confirmation(event_details: EventDetails, calendar_link: Optional[str] = None) -> EventConfirmation:
     """Third LLM call to generate a confirmation message"""
     logger.info("Generating confirmation message")
+
+    # Include calendar link info in the prompt if available
+    link_context = ""
+    if calendar_link:
+        link_context = f"\n\nThe event has been added to Google Calendar. Link: {calendar_link}"
 
     result = client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
-                "content": "Generate a natural confirmation message for the event. Sign of with your name; Preda",
+                "content": f"Generate a natural, friendly confirmation message for the event.{link_context}\n\nSign off with: Best regards, Preda (Calendar AI Agent)",
             },
             {"role": "user", "content": str(event_details.model_dump())},
         ],
         response_model=EventConfirmation,
     )
+    
+    # Add the calendar link to the response
+    if calendar_link:
+        result.calendar_link = calendar_link
 
     logger.info("Confirmation message generated successfully")
     return result
