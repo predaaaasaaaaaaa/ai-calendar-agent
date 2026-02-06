@@ -238,14 +238,18 @@ Important rules:
     return result
 
 
-def generate_confirmation(event_details: EventDetails, calendar_link: Optional[str] = None) -> EventConfirmation:
+def generate_confirmation(
+    event_details: EventDetails, calendar_link: Optional[str] = None
+) -> EventConfirmation:
     """Third LLM call to generate a confirmation message"""
     logger.info("Generating confirmation message")
 
     # Include calendar link info in the prompt if available
     link_context = ""
     if calendar_link:
-        link_context = f"\n\nThe event has been added to Google Calendar. Link: {calendar_link}"
+        link_context = (
+            f"\n\nThe event has been added to Google Calendar. Link: {calendar_link}"
+        )
 
     result = client.chat.completions.create(
         model=model,
@@ -258,7 +262,7 @@ def generate_confirmation(event_details: EventDetails, calendar_link: Optional[s
         ],
         response_model=EventConfirmation,
     )
-    
+
     # Add the calendar link to the response
     if calendar_link:
         result.calendar_link = calendar_link
@@ -303,31 +307,46 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
     logger.info("Calendar request processing completed successfully")
     return confirmation
 
-# Step 6: Test the chain with a valid input
 
-user_input = "Let's schedule a 1h team meeting next Tuesday at 2pm with Alice and Bob to discuss the project roadmap."
-
-result = process_calendar_request(user_input)
-if result:
-    print(f"Confirmation: {result.confirmation_message}")
-    if result.calendar_link:
-        print(f"Calendar Link: {result.calendar_link}")
-
-    else:
-        print("This doesn't appear to be a calendar event request.")
+# Step 6: Main execution
 
 
-# Step 7: Test the chain with an invalid input
+def main():
+    """Main CLI interface"""
+    print("=" * 60)
+    print("🤖 Calendar AI Agent - Natural Language Calendar Events")
+    print("=" * 60)
+    print("\nExamples:")
+    print("  - 'Schedule a team meeting next Tuesday at 2pm for 1 hour'")
+    print("  - 'Book a dentist appointment on Feb 15th at 10am'")
+    print("  - 'Create a lunch meeting with john@example.com tomorrow at noon'\n")
 
-user_input = (
-    "Cam you send an e-mail to Alice and Bob to discuss about the project roadmap?"
-)
+    while True:
+        user_input = input(
+            "\n📅 Enter your calendar request (or 'quit' to exit): "
+        ).strip()
 
-result = process_calendar_request(user_input)
-if result:
-    print(f"Confirmation: {result.confirmation_message}")
-    if result.calendar_link:
-        print(f"Calendar Link: {result.calendar_link}")
+        if user_input.lower() in ["quit", "exit", "q"]:
+            print("\n👋 Goodbye!")
+            break
 
-    else:
-        print("This doesn't appear to be a calendar event request.")
+        if not user_input:
+            print("⚠️  Please enter a request")
+            continue
+
+        print("\n🔄 Processing your request...\n")
+
+        result = process_calendar_request(user_input)
+
+        if result:
+            print("✅ SUCCESS!\n")
+            print(result.confirmation_message)
+            if result.calendar_link:
+                print(f"\n🔗 View in Google Calendar: {result.calendar_link}")
+        else:
+            print("❌ This doesn't appear to be a calendar event request.")
+            print("   Please try rephrasing or provide more details.")
+
+
+if __name__ == "__main__":
+    main()
