@@ -267,11 +267,11 @@ def generate_confirmation(event_details: EventDetails, calendar_link: Optional[s
     return result
 
 
-# Step 5: Chain the fuctions together
+# Step 5: Chain the functions together
 
 
 def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
-    """Main Function implementing the prompt chain with gate check"""
+    """Main function implementing the prompt chain with gate check"""
     logger.info("Processing calendar request")
     logger.debug(f"Raw input: {user_input}")
 
@@ -284,21 +284,24 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
         or initial_extraction.confidence_score < 0.7
     ):
         logger.warning(
-            f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, confidence: {initial_extraction.confidence_score:.2f}"
+            f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, "
+            f"confidence: {initial_extraction.confidence_score:.2f}"
         )
         return None
 
-    logger.info("Gate check passed, processing with event processing")
+    logger.info("Gate check passed, proceeding with event processing")
 
     # Second LLM call: Get detailed event information
     event_details = parse_event_details(initial_extraction.description)
 
+    # Create the actual Google Calendar event
+    calendar_link = create_google_calendar_event(event_details)
+
     # Third LLM call: Generate confirmation
-    confirmation = generate_confirmaion(event_details)
+    confirmation = generate_confirmation(event_details, calendar_link)
 
     logger.info("Calendar request processing completed successfully")
     return confirmation
-
 
 # Step 6: Test the chain with a valid input
 
