@@ -254,6 +254,59 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
         return None
 
 
+def list_calendar_events(
+    time_min: Optional[datetime] = None,
+    time_max: Optional[datetime] = None,
+    max_results: int = 10,
+) -> list[dict]:
+    """
+    List calendar events within a time range
+
+    Args:
+        time_min: Start of time range (defaults to now)
+        time_max: End of time range (defaults to 30 days from now)
+        max_results: Maximum number of events to return
+
+    Returns:
+        List of event dictionaries
+    """
+    try:
+        service = get_calendar_service()
+
+        # Default time range: now to 30 days ahead
+        if time_min is None:
+            time_min = datetime.utcnow()
+        if time_max is None:
+            time_max = time_min + timedelta(days=30)
+
+        logger.info(f"Listing events from {time_min.date()} to {time_max.date()}")
+
+        events_result = (
+            service.events()
+            .list(
+                calendarId="primary",
+                timeMin=time_min.isoformat() + "Z",
+                timeMax=time_max.isoformat() + "Z",
+                maxResults=max_results,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
+
+        events = events_result.get("items", [])
+        logger.info(f"Found {len(events)} events")
+
+        return events
+
+    except HttpError as error:
+        logger.error(f"Google Calendar API error: {error}")
+        return []
+    except Exception as error:
+        logger.error(f"Failed to list events: {error}")
+        return []
+
+
 # Step 4: Define the LLM functions
 
 
@@ -418,32 +471,32 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
             f"Low confidence intent classification: {intent.intent} "
             f"({intent.confidence_score:.2f})"
         )
-        print(f"\n⚠️  I'm not quite sure what you want to do. Could you rephrase?")
+        print(f"\n I'm not quite sure what you want to do. Could you rephrase?")
         print(f"   (I understood it as: {intent.reasoning})")
         return None
 
     # Route based on intent
     if intent.intent == "invalid":
         logger.info("Request is not calendar-related")
-        print(f"\n❌ This doesn't appear to be a calendar request.")
+        print(f"\n This doesn't appear to be a calendar request.")
         print(f"   {intent.reasoning}")
         return None
 
     elif intent.intent == "list":
         logger.info("Routing to LIST operation")
-        print(f"\n📋 LIST feature coming soon!")
+        print(f"\n LIST feature coming soon!")
         print(f"   I understand you want to: {intent.reasoning}")
         return None
 
     elif intent.intent == "update":
         logger.info("Routing to UPDATE operation")
-        print(f"\n✏️  UPDATE feature coming soon!")
+        print(f"\n UPDATE feature coming soon!")
         print(f"   I understand you want to: {intent.reasoning}")
         return None
 
     elif intent.intent == "delete":
         logger.info("Routing to DELETE operation")
-        print(f"\n🗑️  DELETE feature coming soon!")
+        print(f"\n DELETE feature coming soon!")
         print(f"   I understand you want to: {intent.reasoning}")
         return None
 
