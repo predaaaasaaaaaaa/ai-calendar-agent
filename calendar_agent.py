@@ -880,6 +880,14 @@ If they mention specific event names or keywords, extract those.
     elif intent.intent == "update":
         logger.info("Routing to UPDATE operation")
 
+    # SECURITY CHECK: Rate limiting
+    if not check_rate_limit("update", MAX_UPDATES_PER_HOUR):
+        print(
+            f"\n⏰ Rate limit exceeded. You can only update up to {MAX_UPDATES_PER_HOUR} events per hour."
+        )
+        print(f"Please try again later.")
+        return None
+
         # Step 1: Extract search criteria to find the event
         search_criteria = client.chat.completions.create(
             model=model,
