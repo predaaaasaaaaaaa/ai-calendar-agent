@@ -752,18 +752,19 @@ def check_rate_limit(operation: str, max_per_hour: int) -> bool:
     """Check if operation exceeds rate limit"""
     now = datetime.now()
     one_hour_ago = now - timedelta(hours=1)
-    
+
     # Clean old entries
     operation_tracker[operation] = [
-        timestamp for timestamp in operation_tracker[operation]
+        timestamp
+        for timestamp in operation_tracker[operation]
         if timestamp > one_hour_ago
     ]
-    
+
     # Check limit
     if len(operation_tracker[operation]) >= max_per_hour:
         logger.warning(f"Rate limit exceeded for {operation}")
         return False
-    
+
     # Record this operation
     operation_tracker[operation].append(now)
     return True
@@ -775,14 +776,14 @@ def llm_safety_check(user_input: str, operation: str) -> tuple[bool, str]:
     Returns: (is_safe, reason)
     """
     logger.info(f"Running safety check for {operation} operation")
-    
+
     class SafetyCheck(BaseModel):
         is_safe: bool = Field(description="Whether the operation is safe to perform")
         risk_level: Literal["none", "low", "medium", "high", "critical"] = Field(
             description="Risk level of the operation"
         )
         reason: str = Field(description="Explanation of the safety assessment")
-    
+
     result = client.chat.completions.create(
         model=model,
         messages=[
@@ -802,15 +803,18 @@ APPROVE (is_safe=true) if:
 - Has reasonable scope (1-5 events)
 
 Be strict for DELETE operations, more lenient for UPDATE and CREATE.
-"""
+""",
             },
-            {"role": "user", "content": f"Operation: {operation}\nRequest: {user_input}"}
+            {
+                "role": "user",
+                "content": f"Operation: {operation}\nRequest: {user_input}",
+            },
         ],
         response_model=SafetyCheck,
     )
-    
+
     logger.info(f"Safety check result: {result.is_safe} (risk: {result.risk_level})")
-    
+
     return result.is_safe, result.reason
 
 
@@ -958,6 +962,22 @@ Determine what they want to change:
 
     elif intent.intent == "delete":
         logger.info("Routing to DELETE operation")
+
+    # SECURITY CHECK 1: LLM Guardrail
+    is_safe, reason = llm_safety_check(user_input, "delete")
+    if not is_safe:
+        print(f"\n🛑SECURITY ALERT: This operation was blocked for safety.")
+        print(f"   Reason: {reason}")
+        logger.warning(f"Blocked unsafe delete request: {reason}")
+        return None
+
+    # SECURITY CHECK 2: Rate limiting
+    if not check_rate_limit("delete", MAX_DELETES_PER_HOUR):
+        print(
+            f"\n⏰ Rate limit exceeded. You can only delete up to {MAX_DELETES_PER_HOUR} events per hour."
+        )
+        print(f"Please try again later.")
+        return None
 
         # Step 1: Extract search criteria to find events to delete
         search_criteria = client.chat.completions.create(
