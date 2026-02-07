@@ -748,6 +748,27 @@ def generate_confirmation(
 # Step 5: Chain the functions together
 
 
+def check_rate_limit(operation: str, max_per_hour: int) -> bool:
+    """Check if operation exceeds rate limit"""
+    now = datetime.now()
+    one_hour_ago = now - timedelta(hours=1)
+    
+    # Clean old entries
+    operation_tracker[operation] = [
+        timestamp for timestamp in operation_tracker[operation]
+        if timestamp > one_hour_ago
+    ]
+    
+    # Check limit
+    if len(operation_tracker[operation]) >= max_per_hour:
+        logger.warning(f"Rate limit exceeded for {operation}")
+        return False
+    
+    # Record this operation
+    operation_tracker[operation].append(now)
+    return True
+
+
 def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
     """Main function with routing logic"""
     logger.info("=" * 60)
