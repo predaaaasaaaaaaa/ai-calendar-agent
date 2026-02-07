@@ -971,23 +971,21 @@ Determine what they want to change:
 
     elif intent.intent == "delete":
         logger.info("Routing to DELETE operation")
-
-    # SECURITY CHECK 1: LLM Guardrail
-    is_safe, reason = llm_safety_check(user_input, "delete")
-    if not is_safe:
-        print(f"\n🛑SECURITY ALERT: This operation was blocked for safety.")
-        print(f"   Reason: {reason}")
-        logger.warning(f"Blocked unsafe delete request: {reason}")
-        return None
-
-    # SECURITY CHECK 2: Rate limiting
-    if not check_rate_limit("delete", MAX_DELETES_PER_HOUR):
-        print(
-            f"\n⏰ Rate limit exceeded. You can only delete up to {MAX_DELETES_PER_HOUR} events per hour."
-        )
-        print(f"Please try again later.")
-        return None
-
+    
+        # SECURITY CHECK 1: LLM Guardrail
+        is_safe, reason = llm_safety_check(user_input, "delete")
+        if not is_safe:
+            print(f"\n🛑 SECURITY ALERT: This operation was blocked for safety.")
+            print(f"   Reason: {reason}")
+            logger.warning(f"Blocked unsafe delete request: {reason}")
+            return None
+    
+        # SECURITY CHECK 2: Rate limiting
+        if not check_rate_limit("delete", MAX_DELETES_PER_HOUR):
+            print(f"\n⏰ Rate limit exceeded. You can only delete up to {MAX_DELETES_PER_HOUR} events per hour.")
+            print(f"   Please try again later.")
+            return None
+    
         # Step 1: Extract search criteria to find events to delete
         search_criteria = client.chat.completions.create(
             model=model,
@@ -996,112 +994,79 @@ Determine what they want to change:
                     "role": "system",
                     "content": f"""Extract information to identify which event(s) the user wants to delete.
                 
-Today is {datetime.now().strftime("%A, %B %d, %Y")}.
+    Today is {datetime.now().strftime('%A, %B %d, %Y')}.
 
-Look for:
-- Keywords from the event name
-- Date/time references (today, tomorrow, next Tuesday, etc.)
-- Whether they want to delete multiple events or just one
-""",
+    Look for:
+    - Keywords from the event name
+    - Date/time references (today, tomorrow, next Tuesday, etc.)
+    - Whether they want to delete multiple events or just one
+    """
                 },
-                {"role": "user", "content": user_input},
+                {"role": "user", "content": user_input}
             ],
             response_model=EventSearchCriteria,
         )
-
-    # Step 2: Search for matching events
-    events = search_events(search_criteria)
-
-    if not events:
-        print("\n❌ I couldn't find any matching events to delete.")
-        return None
-
-    # SECURITY CHECK 3: Maximum events limit
-    if len(events) > MAX_EVENTS_PER_DELETE:
-        print(f"\n🛑 SECURITY LIMIT: Found {len(events)} events, but I can only delete up to {MAX_EVENTS_PER_DELETE} at once.")
-        print(f"   Please be more specific to target fewer events.")
-        logger.warning(f"Blocked deletion of {len(events)} events (exceeds limit)")
-        return None
-
-    # Step 3: Determine risk level
-    num_events = len(events)
-    if num_events == 1:
-        risk_level = "low"
-    elif num_events <= 3:
-        risk_level = "medium"
-    else:
-        risk_level = "high"
-
-    # Step 4: Show what will be deleted
-    print(f"\n Found {num_events} event(s) to delete:")
-    display_events(events)
-
-    # Step 5: SECURITY CHECK - Ask for confirmation
-    event_names = [e.get("summary", "Untitled") for e in events]
-
-    if num_events == 1:
-        confirmation_msg = f"⚠️  Are you sure you want to delete '{event_names[0]}'?"
-    else:
-        confirmation_msg = (
-            f"⚠️  Are you sure you want to delete these {num_events} events?"
-        )
-
-    if not ask_user_confirmation(confirmation_msg):
-        print("\n✋ Deletion cancelled. No events were removed.")
-        logger.info("User cancelled deletion")
-        return None
-
-    # Step 6: Delete the events
-    print("\n🔄 Deleting events...")
-    deleted_count = 0
-    failed_count = 0
-
-    for event in events:
-        event_id = event["id"]
-        if delete_google_calendar_event(event_id):
-            deleted_count += 1
-        else:
-            failed_count += 1
-
-    # Step 7: Report results
-    print(f"\n✅ Successfully deleted {deleted_count} event(s)")
-    if failed_count > 0:
-        print(f"❌ Failed to delete {failed_count} event(s)")
-
-        logger.info(
-            f"Deletion complete: {deleted_count} deleted, {failed_count} failed"
-        )
-        return None
-
-    elif intent.intent == "create":
-        logger.info("Routing to CREATE operation (existing flow)")
-
-        # Original CREATE flow (unchanged)
-        initial_extraction = extract_event_info(user_input)
-
-        if (
-            not initial_extraction.is_calendar_event
-            or initial_extraction.confidence_score < 0.7
-        ):
-            logger.warning(
-                f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, "
-                f"confidence: {initial_extraction.confidence_score:.2f}"
-            )
+    
+        # Step 2: Search for matching events
+        events = search_events(search_criteria)
+    
+        if not events:
+            print("\n❌ I couldn't find any matching events to delete.")
+            print("   Try being more specific about which event you want to remove.")
             return None
-
-        logger.info("Gate check passed, proceeding with event creation")
-
-        event_details = parse_event_details(initial_extraction.description)
-        calendar_link = create_google_calendar_event(event_details)
-        confirmation = generate_confirmation(event_details, calendar_link)
-
-        logger.info("Calendar request processing completed successfully")
-        return confirmation
-
-    else:
-        logger.error(f"Unknown intent: {intent.intent}")
+    
+        # SECURITY CHECK 3: Maximum events limit
+        if len(events) > MAX_EVENTS_PER_DELETE:
+            print(f"\n🛑 SECURITY LIMIT: Found {len(events)} events, but I can only delete up to {MAX_EVENTS_PER_DELETE} at once.")
+            print(f"   Please be more specific to target fewer events.")
+            logger.warning(f"Blocked deletion of {len(events)} events (exceeds limit)")
+            return None
+    
+        # Step 3: Determine risk level
+        num_events = len(events)
+        if num_events == 1:
+            risk_level = "low"
+        elif num_events <= 3:
+            risk_level = "medium"
+        else:
+            risk_level = "high"
+    
+        # Step 4: Show what will be deleted
+        print(f"\n🗑️  Found {num_events} event(s) to delete:")
+        display_events(events)
+    
+        # Step 5: SECURITY CHECK - Ask for confirmation
+        event_names = [e.get('summary', 'Untitled') for e in events]
+    
+        if num_events == 1:
+            confirmation_msg = f"⚠️  Are you sure you want to delete '{event_names[0]}'?"
+        else:
+            confirmation_msg = f"⚠️  Are you sure you want to delete these {num_events} events?"
+    
+        if not ask_user_confirmation(confirmation_msg):
+            print("\n✋ Deletion cancelled. No events were removed.")
+            logger.info("User cancelled deletion")
+            return None
+    
+        # Step 6: Delete the events
+        print("\n🔄 Deleting events...")
+        deleted_count = 0
+        failed_count = 0
+    
+        for event in events:
+            event_id = event['id']
+            if delete_google_calendar_event(event_id):
+                deleted_count += 1
+            else:
+                failed_count += 1
+    
+        # Step 7: Report results
+        print(f"\n✅ Successfully deleted {deleted_count} event(s)")
+        if failed_count > 0:
+            print(f"❌ Failed to delete {failed_count} event(s)")
+    
+        logger.info(f"Deletion complete: {deleted_count} deleted, {failed_count} failed")
         return None
-
 
 # Step 6: Main execution
 
