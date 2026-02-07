@@ -971,7 +971,7 @@ Determine what they want to change:
 
     elif intent.intent == "delete":
         logger.info("Routing to DELETE operation")
-    
+
         # SECURITY CHECK 1: LLM Guardrail
         is_safe, reason = llm_safety_check(user_input, "delete")
         if not is_safe:
@@ -979,13 +979,15 @@ Determine what they want to change:
             print(f"   Reason: {reason}")
             logger.warning(f"Blocked unsafe delete request: {reason}")
             return None
-    
+
         # SECURITY CHECK 2: Rate limiting
         if not check_rate_limit("delete", MAX_DELETES_PER_HOUR):
-            print(f"\n⏰ Rate limit exceeded. You can only delete up to {MAX_DELETES_PER_HOUR} events per hour.")
+            print(
+                f"\n⏰ Rate limit exceeded. You can only delete up to {MAX_DELETES_PER_HOUR} events per hour."
+            )
             print(f"   Please try again later.")
             return None
-    
+
         # Step 1: Extract search criteria to find events to delete
         search_criteria = client.chat.completions.create(
             model=model,
@@ -994,34 +996,36 @@ Determine what they want to change:
                     "role": "system",
                     "content": f"""Extract information to identify which event(s) the user wants to delete.
                 
-    Today is {datetime.now().strftime('%A, %B %d, %Y')}.
+    Today is {datetime.now().strftime("%A, %B %d, %Y")}.
 
     Look for:
     - Keywords from the event name
     - Date/time references (today, tomorrow, next Tuesday, etc.)
     - Whether they want to delete multiple events or just one
-    """
+    """,
                 },
-                {"role": "user", "content": user_input}
+                {"role": "user", "content": user_input},
             ],
             response_model=EventSearchCriteria,
         )
-    
+
         # Step 2: Search for matching events
         events = search_events(search_criteria)
-    
+
         if not events:
             print("\n❌ I couldn't find any matching events to delete.")
             print("   Try being more specific about which event you want to remove.")
             return None
-    
+
         # SECURITY CHECK 3: Maximum events limit
         if len(events) > MAX_EVENTS_PER_DELETE:
-            print(f"\n🛑 SECURITY LIMIT: Found {len(events)} events, but I can only delete up to {MAX_EVENTS_PER_DELETE} at once.")
+            print(
+                f"\n🛑 SECURITY LIMIT: Found {len(events)} events, but I can only delete up to {MAX_EVENTS_PER_DELETE} at once."
+            )
             print(f"   Please be more specific to target fewer events.")
             logger.warning(f"Blocked deletion of {len(events)} events (exceeds limit)")
             return None
-    
+
         # Step 3: Determine risk level
         num_events = len(events)
         if num_events == 1:
@@ -1030,82 +1034,98 @@ Determine what they want to change:
             risk_level = "medium"
         else:
             risk_level = "high"
-    
+
         # Step 4: Show what will be deleted
         print(f"\n🗑️  Found {num_events} event(s) to delete:")
         display_events(events)
-    
+
         # Step 5: SECURITY CHECK - Ask for confirmation
-        event_names = [e.get('summary', 'Untitled') for e in events]
-    
+        event_names = [e.get("summary", "Untitled") for e in events]
+
         if num_events == 1:
             confirmation_msg = f"⚠️  Are you sure you want to delete '{event_names[0]}'?"
         else:
-            confirmation_msg = f"⚠️  Are you sure you want to delete these {num_events} events?"
-    
+            confirmation_msg = (
+                f"⚠️  Are you sure you want to delete these {num_events} events?"
+            )
+
         if not ask_user_confirmation(confirmation_msg):
             print("\n✋ Deletion cancelled. No events were removed.")
             logger.info("User cancelled deletion")
             return None
-    
+
         # Step 6: Delete the events
         print("\n🔄 Deleting events...")
         deleted_count = 0
         failed_count = 0
-    
+
         for event in events:
-            event_id = event['id']
+            event_id = event["id"]
             if delete_google_calendar_event(event_id):
                 deleted_count += 1
             else:
                 failed_count += 1
-    
+
         # Step 7: Report results
         print(f"\n✅ Successfully deleted {deleted_count} event(s)")
         if failed_count > 0:
             print(f"❌ Failed to delete {failed_count} event(s)")
-    
-        logger.info(f"Deletion complete: {deleted_count} deleted, {failed_count} failed")
+
+        logger.info(
+            f"Deletion complete: {deleted_count} deleted, {failed_count} failed"
+        )
         return None
 
-# Step 6: Main execution
 
+# Step 6: Main execution
 
 def main():
     """Main CLI interface"""
     print("=" * 60)
-    print("🤖 Calendar AI Agent - Natural Language Calendar Events")
+    print("🤖 Calendar AI Agent v2.0 - Advanced Calendar Management")
     print("=" * 60)
+    print("\n✨ New Features:")
+    print("  ✅ CREATE events")
+    print("  ✏️  UPDATE existing events")
+    print("  🗑️  DELETE events (with safety checks)")
+    print("  📋 LIST and search your calendar")
     print("\nExamples:")
-    print("  - 'Schedule a team meeting next Tuesday at 2pm for 1 hour'")
-    print("  - 'Book a dentist appointment on Feb 15th at 10am'")
-    print("  - 'Create a lunch meeting with john@example.com tomorrow at noon'\n")
+    print("  - 'Schedule a team meeting next Tuesday at 2pm'")
+    print("  - 'Move my dentist appointment to Friday at 3pm'")
+    print("  - 'Cancel my lunch meeting tomorrow'")
+    print("  - 'What meetings do I have this week?'\n")
 
     while True:
-        user_input = input(
-            "\n📅 Enter your calendar request (or 'quit' to exit): "
-        ).strip()
+        try:
+            user_input = input(
+                "\n📅 Enter your calendar request (or 'quit' to exit): "
+            ).strip()
 
-        if user_input.lower() in ["quit", "exit", "q"]:
-            print("\n👋 Goodbye!")
+            if user_input.lower() in ["quit", "exit", "q"]:
+                print("\n👋 Goodbye!")
+                break
+
+            if not user_input:
+                print("⚠️  Please enter a request")
+                continue
+
+            print("\n🔄 Processing your request...\n")
+
+            result = process_calendar_request(user_input)
+
+            if result:
+                print("✅ SUCCESS!\n")
+                print(result.confirmation_message)
+                if result.calendar_link:
+                    print(f"\n🔗 View in Google Calendar: {result.calendar_link}")
+
+        except KeyboardInterrupt:
+            print("\n\n👋 Interrupted. Goodbye!")
             break
-
-        if not user_input:
-            print("⚠️  Please enter a request")
-            continue
-
-        print("\n🔄 Processing your request...\n")
-
-        result = process_calendar_request(user_input)
-
-        if result:
-            print("✅ SUCCESS!\n")
-            print(result.confirmation_message)
-            if result.calendar_link:
-                print(f"\n🔗 View in Google Calendar: {result.calendar_link}")
-        else:
-            print("❌ This doesn't appear to be a calendar event request.")
-            print("   Please try rephrasing or provide more details.")
+        except Exception as e:
+            print(f"\n❌ An error occurred: {str(e)}")
+            logger.error(f"Unexpected error: {e}", exc_info=True)
+            print("   Please try again or rephrase your request.")
 
 
 if __name__ == "__main__":
