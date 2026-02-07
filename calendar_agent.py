@@ -404,37 +404,77 @@ def generate_confirmation(
 
 
 def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
-    """Main function implementing the prompt chain with gate check"""
+    """Main function with routing logic"""
+    logger.info("=" * 60)
     logger.info("Processing calendar request")
     logger.debug(f"Raw input: {user_input}")
-
-    # First LLM call: Extract basic info
-    initial_extraction = extract_event_info(user_input)
-
-    # Gate check: Verify if it's a calendar event with sufficient confidence
-    if (
-        not initial_extraction.is_calendar_event
-        or initial_extraction.confidence_score < 0.7
-    ):
+    
+    # STEP 1: Classify user intent (NEW!)
+    intent = classify_intent(user_input)
+    
+    # Gate check: Verify confidence level
+    if intent.confidence_score < 0.7:
         logger.warning(
-            f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, "
-            f"confidence: {initial_extraction.confidence_score:.2f}"
+            f"Low confidence intent classification: {intent.intent} "
+            f"({intent.confidence_score:.2f})"
         )
+        print(f"\n⚠️  I'm not quite sure what you want to do. Could you rephrase?")
+        print(f"   (I understood it as: {intent.reasoning})")
         return None
-
-    logger.info("Gate check passed, proceeding with event processing")
-
-    # Second LLM call: Get detailed event information
-    event_details = parse_event_details(initial_extraction.description)
-
-    # Create the actual Google Calendar event
-    calendar_link = create_google_calendar_event(event_details)
-
-    # Third LLM call: Generate confirmation
-    confirmation = generate_confirmation(event_details, calendar_link)
-
-    logger.info("Calendar request processing completed successfully")
-    return confirmation
+    
+    # Route based on intent
+    if intent.intent == "invalid":
+        logger.info("Request is not calendar-related")
+        print(f"\n❌ This doesn't appear to be a calendar request.")
+        print(f"   {intent.reasoning}")
+        return None
+    
+    elif intent.intent == "list":
+        logger.info("Routing to LIST operation")
+        print(f"\n📋 LIST feature coming soon!")
+        print(f"   I understand you want to: {intent.reasoning}")
+        return None
+    
+    elif intent.intent == "update":
+        logger.info("Routing to UPDATE operation")
+        print(f"\n✏️  UPDATE feature coming soon!")
+        print(f"   I understand you want to: {intent.reasoning}")
+        return None
+    
+    elif intent.intent == "delete":
+        logger.info("Routing to DELETE operation")
+        print(f"\n🗑️  DELETE feature coming soon!")
+        print(f"   I understand you want to: {intent.reasoning}")
+        return None
+    
+    elif intent.intent == "create":
+        logger.info("Routing to CREATE operation (existing flow)")
+        
+        # Original CREATE flow (unchanged)
+        initial_extraction = extract_event_info(user_input)
+        
+        if (
+            not initial_extraction.is_calendar_event
+            or initial_extraction.confidence_score < 0.7
+        ):
+            logger.warning(
+                f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, "
+                f"confidence: {initial_extraction.confidence_score:.2f}"
+            )
+            return None
+        
+        logger.info("Gate check passed, proceeding with event creation")
+        
+        event_details = parse_event_details(initial_extraction.description)
+        calendar_link = create_google_calendar_event(event_details)
+        confirmation = generate_confirmation(event_details, calendar_link)
+        
+        logger.info("Calendar request processing completed successfully")
+        return confirmation
+    
+    else:
+        logger.error(f"Unknown intent: {intent.intent}")
+        return None
 
 
 # Step 6: Main execution
