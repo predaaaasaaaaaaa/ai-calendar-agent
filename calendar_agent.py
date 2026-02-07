@@ -825,7 +825,7 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
     logger.info("Processing calendar request")
     logger.debug(f"Raw input: {user_input}")
 
-    # STEP 1: Classify user intent (NEW!)
+    # STEP 1: Classify user intent
     intent = classify_intent(user_input)
 
     # Gate check: Verify confidence level
@@ -834,21 +834,20 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
             f"Low confidence intent classification: {intent.intent} "
             f"({intent.confidence_score:.2f})"
         )
-        print(f"\n I'm not quite sure what you want to do. Could you rephrase?")
+        print(f"\n⚠️  I'm not quite sure what you want to do. Could you rephrase?")
         print(f"   (I understood it as: {intent.reasoning})")
         return None
 
     # Route based on intent
     if intent.intent == "invalid":
         logger.info("Request is not calendar-related")
-        print(f"\n This doesn't appear to be a calendar request.")
+        print(f"\n❌ This doesn't appear to be a calendar request.")
         print(f"   {intent.reasoning}")
         return None
 
     elif intent.intent == "list":
         logger.info("Routing to LIST operation")
 
-        # Parse what they want to list
         result = client.chat.completions.create(
             model=model,
             messages=[
@@ -868,26 +867,48 @@ If they mention specific event names or keywords, extract those.
         )
 
         logger.info(f"Searching with criteria: {result.model_dump()}")
-
-        # Search for events
         events = search_events(result)
 
-        # Display results
         print("\n📋 YOUR CALENDAR EVENTS:")
         display_events(events)
-
         return None
+
+    elif intent.intent == "create":
+        logger.info("Routing to CREATE operation (existing flow)")
+
+        # Original CREATE flow
+        initial_extraction = extract_event_info(user_input)
+
+        if (
+            not initial_extraction.is_calendar_event
+            or initial_extraction.confidence_score < 0.7
+        ):
+            logger.warning(
+                f"Gate check failed - is_calendar_event: {initial_extraction.is_calendar_event}, "
+                f"confidence: {initial_extraction.confidence_score:.2f}"
+            )
+            print("\n❌ This doesn't appear to be a clear calendar event request.")
+            return None
+
+        logger.info("Gate check passed, proceeding with event creation")
+
+        event_details = parse_event_details(initial_extraction.description)
+        calendar_link = create_google_calendar_event(event_details)
+        confirmation = generate_confirmation(event_details, calendar_link)
+
+        logger.info("Calendar request processing completed successfully")
+        return confirmation
 
     elif intent.intent == "update":
         logger.info("Routing to UPDATE operation")
 
-    # SECURITY CHECK: Rate limiting
-    if not check_rate_limit("update", MAX_UPDATES_PER_HOUR):
-        print(
-            f"\n⏰ Rate limit exceeded. You can only update up to {MAX_UPDATES_PER_HOUR} events per hour."
-        )
-        print(f"Please try again later.")
-        return None
+        # SECURITY CHECK: Rate limiting
+        if not check_rate_limit("update", MAX_UPDATES_PER_HOUR):
+            print(
+                f"\n⏰ Rate limit exceeded. You can only update up to {MAX_UPDATES_PER_HOUR} events per hour."
+            )
+            print(f"   Please try again later.")
+            return None
 
         # Step 1: Extract search criteria to find the event
         search_criteria = client.chat.completions.create(
@@ -988,7 +1009,7 @@ Determine what they want to change:
             print(f"   Please try again later.")
             return None
 
-        # Step 1: Extract search criteria to find events to delete
+        # Step 1: Extract search criteria
         search_criteria = client.chat.completions.create(
             model=model,
             messages=[
@@ -996,13 +1017,13 @@ Determine what they want to change:
                     "role": "system",
                     "content": f"""Extract information to identify which event(s) the user wants to delete.
                 
-    Today is {datetime.now().strftime("%A, %B %d, %Y")}.
+Today is {datetime.now().strftime("%A, %B %d, %Y")}.
 
-    Look for:
-    - Keywords from the event name
-    - Date/time references (today, tomorrow, next Tuesday, etc.)
-    - Whether they want to delete multiple events or just one
-    """,
+Look for:
+- Keywords from the event name
+- Date/time references (today, tomorrow, next Tuesday, etc.)
+- Whether they want to delete multiple events or just one
+""",
                 },
                 {"role": "user", "content": user_input},
             ],
@@ -1026,20 +1047,12 @@ Determine what they want to change:
             logger.warning(f"Blocked deletion of {len(events)} events (exceeds limit)")
             return None
 
-        # Step 3: Determine risk level
+        # Step 3: Show what will be deleted
         num_events = len(events)
-        if num_events == 1:
-            risk_level = "low"
-        elif num_events <= 3:
-            risk_level = "medium"
-        else:
-            risk_level = "high"
-
-        # Step 4: Show what will be deleted
         print(f"\n🗑️  Found {num_events} event(s) to delete:")
         display_events(events)
 
-        # Step 5: SECURITY CHECK - Ask for confirmation
+        # Step 4: Ask for confirmation
         event_names = [e.get("summary", "Untitled") for e in events]
 
         if num_events == 1:
@@ -1054,7 +1067,7 @@ Determine what they want to change:
             logger.info("User cancelled deletion")
             return None
 
-        # Step 6: Delete the events
+        # Step 5: Delete the events
         print("\n🔄 Deleting events...")
         deleted_count = 0
         failed_count = 0
@@ -1066,7 +1079,7 @@ Determine what they want to change:
             else:
                 failed_count += 1
 
-        # Step 7: Report results
+        # Step 6: Report results
         print(f"\n✅ Successfully deleted {deleted_count} event(s)")
         if failed_count > 0:
             print(f"❌ Failed to delete {failed_count} event(s)")
@@ -1076,8 +1089,13 @@ Determine what they want to change:
         )
         return None
 
+    else:
+        logger.error(f"Unknown intent: {intent.intent}")
+        return None
+
 
 # Step 6: Main execution
+
 
 def main():
     """Main CLI interface"""
