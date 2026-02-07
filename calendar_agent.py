@@ -104,6 +104,29 @@ class EventSearchCriteria(BaseModel):
     )
 
 
+class EventUpdateRequest(BaseModel):
+    """What changes the user wants to make to an event"""
+
+    new_name: Optional[str] = Field(
+        description="New event name/title if changing", default=None
+    )
+    new_date: Optional[str] = Field(
+        description="New date/time in ISO format if rescheduling", default=None
+    )
+    new_duration_minutes: Optional[int] = Field(
+        description="New duration in minutes if changing", default=None
+    )
+    new_location: Optional[str] = Field(
+        description="New location if changing", default=None
+    )
+    add_participants: list[str] = Field(
+        description="Email addresses to add as participants", default_factory=list
+    )
+    remove_participants: list[str] = Field(
+        description="Email addresses to remove from participants", default_factory=list
+    )
+
+
 # Step 2: Google Calendar Authentication
 
 
@@ -417,6 +440,105 @@ def display_events(events: list[dict]) -> None:
         print()
 
 
+def update_google_calendar_event(
+    event_id: str, updates: EventUpdateRequest
+) -> Optional[str]:
+    """Update an existing Google Calendar event"""
+    try:
+        service = get_calendar_service()
+
+        # First, get the existing event
+        logger.info(f"Fetching event {event_id[:20]}... for update")
+        event = service.events().get(calendarId="primary", eventId=event_id).execute()
+
+        logger.info(f"Current event: {event.get('summary')}")
+
+        # Apply updates
+        if updates.new_name:
+            event["summary"] = updates.new_name
+            logger.info(f"Updating name to: {updates.new_name}")
+
+        if updates.new_date:
+            # Parse new date
+            new_start = datetime.fromisoformat(updates.new_date)
+
+            # Calculate duration from existing event or use new duration
+            if updates.new_duration_minutes:
+                duration = updates.new_duration_minutes
+            else:
+                # Calculate existing duration
+                old_start = datetime.fromisoformat(
+                    event["start"]["dateTime"].replace("Z", "+00:00")
+                )
+                old_end = datetime.fromisoformat(
+                    event["end"]["dateTime"].replace("Z", "+00:00")
+                )
+                duration = int((old_end - old_start).total_seconds() / 60)
+
+            new_end = new_start + timedelta(minutes=duration)
+
+            event["start"] = {"dateTime": new_start.isoformat(), "timeZone": "UTC"}
+            event["end"] = {"dateTime": new_end.isoformat(), "timeZone": "UTC"}
+            logger.info(f"Updating date to: {new_start}")
+
+        elif updates.new_duration_minutes:
+            # Just changing duration, keep same start time
+            old_start = datetime.fromisoformat(
+                event["start"]["dateTime"].replace("Z", "+00:00")
+            )
+            new_end = old_start + timedelta(minutes=updates.new_duration_minutes)
+            event["end"] = {"dateTime": new_end.isoformat(), "timeZone": "UTC"}
+            logger.info(f"Updating duration to: {updates.new_duration_minutes} minutes")
+
+        if updates.new_location:
+            event["location"] = updates.new_location
+            logger.info(f"Updating location to: {updates.new_location}")
+
+        # Handle participants
+        attendees = event.get("attendees", [])
+
+        if updates.add_participants:
+            for email in updates.add_participants:
+                if not any(a.get("email") == email for a in attendees):
+                    attendees.append({"email": email})
+            logger.info(f"Adding participants: {updates.add_participants}")
+
+        if updates.remove_participants:
+            attendees = [
+                a
+                for a in attendees
+                if a.get("email") not in updates.remove_participants
+            ]
+            logger.info(f"Removing participants: {updates.remove_participants}")
+
+        if updates.add_participants or updates.remove_participants:
+            event["attendees"] = attendees
+
+        # Update the event
+        updated_event = (
+            service.events()
+            .update(
+                calendarId="primary", eventId=event_id, body=event, sendUpdates="all"
+            )
+            .execute()
+        )
+
+        event_link = updated_event.get("htmlLink")
+        logger.info(f"✅ Event updated successfully! Link: {event_link}")
+
+        return event_link
+
+    except HttpError as error:
+        logger.error(f"Google Calendar API error: {error}")
+        return None
+    except Exception as error:
+        logger.error(f"Failed to update event: {error}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return None
+
+
 # Step 4: Define the LLM functions
 
 
@@ -627,8 +749,85 @@ If they mention specific event names or keywords, extract those.
 
     elif intent.intent == "update":
         logger.info("Routing to UPDATE operation")
-        print(f"\n UPDATE feature coming soon!")
-        print(f"   I understand you want to: {intent.reasoning}")
+
+        # Step 1: Extract search criteria to find the event
+        search_criteria = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""Extract information to identify which event the user wants to update.
+                    
+Today is {datetime.now().strftime("%A, %B %d, %Y")}.
+
+Look for:
+- Keywords from the event name
+- Date/time references (today, tomorrow, next Tuesday, etc.)
+""",
+                },
+                {"role": "user", "content": user_input},
+            ],
+            response_model=EventSearchCriteria,
+        )
+
+        # Step 2: Search for matching events
+        events = search_events(search_criteria)
+
+        if not events:
+            print("\n❌ I couldn't find any matching events to update.")
+            print("   Try being more specific about which event you want to change.")
+            return None
+
+        if len(events) > 1:
+            print(
+                f"\n⚠️  I found {len(events)} matching events. Please be more specific:"
+            )
+            display_events(events)
+            print("   Try mentioning the exact date or more details about the event.")
+            return None
+
+        # Step 3: Found exactly one event - extract what to update
+        event = events[0]
+        print(f"\n✏️  Found event to update: {event.get('summary')}")
+
+        updates = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""Extract what changes the user wants to make to the event.
+                    
+Today is {datetime.now().strftime("%A, %B %d, %Y")}.
+
+Current event details:
+- Name: {event.get("summary")}
+- Start: {event.get("start", {}).get("dateTime", "Unknown")}
+
+Determine what they want to change:
+- New name/title?
+- New date/time?
+- New duration?
+- New location?
+- Add or remove participants?
+""",
+                },
+                {"role": "user", "content": user_input},
+            ],
+            response_model=EventUpdateRequest,
+        )
+
+        logger.info(f"Updates to apply: {updates.model_dump()}")
+
+        # Step 4: Update the event
+        event_id = event["id"]
+        calendar_link = update_google_calendar_event(event_id, updates)
+
+        if calendar_link:
+            print(f"\n✅ Event updated successfully!")
+            print(f"🔗 View in Google Calendar: {calendar_link}")
+        else:
+            print(f"\n❌ Failed to update the event. Please try again.")
+
         return None
 
     elif intent.intent == "delete":
