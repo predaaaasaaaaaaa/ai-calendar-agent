@@ -769,6 +769,51 @@ def check_rate_limit(operation: str, max_per_hour: int) -> bool:
     return True
 
 
+def llm_safety_check(user_input: str, operation: str) -> tuple[bool, str]:
+    """
+    LLM-based safety check to prevent malicious or dangerous operations
+    Returns: (is_safe, reason)
+    """
+    logger.info(f"Running safety check for {operation} operation")
+    
+    class SafetyCheck(BaseModel):
+        is_safe: bool = Field(description="Whether the operation is safe to perform")
+        risk_level: Literal["none", "low", "medium", "high", "critical"] = Field(
+            description="Risk level of the operation"
+        )
+        reason: str = Field(description="Explanation of the safety assessment")
+    
+    result = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": f"""You are a safety guardian for a calendar agent. Analyze if this {operation} request is safe.
+
+REJECT (is_safe=false) if the request:
+- Attempts to delete ALL events or a very large number of events
+- Uses suspicious patterns like "delete everything", "cancel all", "remove all meetings"
+- Seems to be testing limits or attempting abuse
+- Is vague but destructive (e.g., "delete my calendar")
+
+APPROVE (is_safe=true) if:
+- Targets specific events with clear criteria
+- Is a normal calendar operation
+- Has reasonable scope (1-5 events)
+
+Be strict for DELETE operations, more lenient for UPDATE and CREATE.
+"""
+            },
+            {"role": "user", "content": f"Operation: {operation}\nRequest: {user_input}"}
+        ],
+        response_model=SafetyCheck,
+    )
+    
+    logger.info(f"Safety check result: {result.is_safe} (risk: {result.risk_level})")
+    
+    return result.is_safe, result.reason
+
+
 def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
     """Main function with routing logic"""
     logger.info("=" * 60)
