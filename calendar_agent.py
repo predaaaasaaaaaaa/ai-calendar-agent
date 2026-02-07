@@ -593,10 +593,37 @@ def process_calendar_request(user_input: str) -> Optional[EventConfirmation]:
         return None
 
     elif intent.intent == "list":
-        logger.info("Routing to LIST operation")
-        print(f"\n LIST feature coming soon!")
-        print(f"   I understand you want to: {intent.reasoning}")
-        return None
+    logger.info("Routing to LIST operation")
+    
+    # Parse what they want to list
+    result = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": f"""Extract search criteria from the user's request to list calendar events.
+                
+Today is {datetime.now().strftime('%A, %B %d, %Y')}.
+
+If they mention a timeframe, put it in date_filter (e.g., "today", "tomorrow", "this week", "next week").
+If they mention specific event names or keywords, extract those.
+"""
+            },
+            {"role": "user", "content": user_input}
+        ],
+        response_model=EventSearchCriteria,
+    )
+    
+    logger.info(f"Searching with criteria: {result.model_dump()}")
+    
+    # Search for events
+    events = search_events(result)
+    
+    # Display results
+    print("\n📋 YOUR CALENDAR EVENTS:")
+    display_events(events)
+    
+    return None
 
     elif intent.intent == "update":
         logger.info("Routing to UPDATE operation")
