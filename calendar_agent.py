@@ -127,6 +127,21 @@ class EventUpdateRequest(BaseModel):
     )
 
 
+class DeleteConfirmation(BaseModel):
+    """Safety check before deletion"""
+
+    event_ids: list[str] = Field(description="List of event IDs to delete")
+    event_summaries: list[str] = Field(
+        description="Names of events being deleted (for confirmation)"
+    )
+    risk_level: Literal["low", "medium", "high"] = Field(
+        description="Risk level: low (1 event), medium (2-3 events), high (4+ events)"
+    )
+    confirmation_message: str = Field(
+        description="Message to show user before deleting"
+    )
+
+
 # Step 2: Google Calendar Authentication
 
 
@@ -537,6 +552,33 @@ def update_google_calendar_event(
 
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
+
+
+def delete_google_calendar_event(event_id: str) -> bool:
+    """Delete a Google Calendar event"""
+    try:
+        service = get_calendar_service()
+
+        # Get event details before deleting (for logging)
+        event = service.events().get(calendarId="primary", eventId=event_id).execute()
+        event_name = event.get("summary", "Untitled")
+
+        logger.info(f"Deleting event: {event_name} (ID: {event_id[:20]}...)")
+
+        # Delete the event
+        service.events().delete(
+            calendarId="primary", eventId=event_id, sendUpdates="all"
+        ).execute()
+
+        logger.info(f"✅ Event '{event_name}' deleted successfully")
+        return True
+
+    except HttpError as error:
+        logger.error(f"Google Calendar API error: {error}")
+        return False
+    except Exception as error:
+        logger.error(f"Failed to delete event: {error}")
+        return False
 
 
 # Step 4: Define the LLM functions
