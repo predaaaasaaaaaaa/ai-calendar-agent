@@ -77,6 +77,33 @@ class EventConfirmation(BaseModel):
     )
 
 
+class IntentClassification(BaseModel):
+    """Router LLM call: Determine user intent"""
+
+    intent: Literal["create", "update", "delete", "list", "invalid"] = Field(
+        description="The type of calendar operation the user wants to perform"
+    )
+    confidence_score: float = Field(description="Confidence score between 0 and 1")
+    reasoning: str = Field(
+        description="Brief explanation of why this intent was chosen"
+    )
+
+
+class EventSearchCriteria(BaseModel):
+    """Criteria to search for events to update or delete"""
+
+    event_name_keywords: list[str] = Field(
+        description="Keywords from the event name/title", default_factory=list
+    )
+    date_filter: Optional[str] = Field(
+        description="Date or date range in ISO format (e.g., '2024-02-15' or 'tomorrow')",
+        default=None,
+    )
+    time_filter: Optional[str] = Field(
+        description="Specific time if mentioned (e.g., '2pm', '14:00')", default=None
+    )
+
+
 # Step 2: Google Calendar Authentication
 
 
@@ -228,6 +255,54 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
 
 
 # Step 4: Define the LLM functions
+
+
+def classify_intent(user_input: str) -> IntentClassification:
+    """First step: Classify what the user wants to do"""
+    logger.info("Classifying user intent")
+    logger.debug(f"Input text: {user_input}")
+
+    today = datetime.now()
+    date_context = f"Today is {today.strftime('%A, %B %d, %Y')}."
+
+    result = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": f"""{date_context}
+
+Analyze the user's request and classify their intent into one of these categories:
+
+1. "create" - User wants to CREATE a new calendar event
+   Examples: "Schedule a meeting", "Book an appointment", "Add to my calendar"
+
+2. "update" - User wants to MODIFY an existing event
+   Examples: "Change the meeting time", "Move my appointment", "Reschedule the call"
+
+3. "delete" - User wants to REMOVE an existing event
+   Examples: "Cancel my meeting", "Delete the appointment", "Remove the event"
+
+4. "list" - User wants to VIEW/LIST their calendar events
+   Examples: "What's on my calendar?", "Show my meetings", "What do I have tomorrow?"
+
+5. "invalid" - Request is not related to calendar operations
+   Examples: "What's the weather?", "Send an email", "Search the web"
+
+Provide high confidence (>0.8) only when the intent is very clear.
+"""
+            },
+            {"role": "user", "content": user_input},
+        ],
+        response_model=IntentClassification,
+    )
+
+    logger.info(
+        f"Intent classified: {result.intent} "
+        f"(confidence: {result.confidence_score:.2f}) - {result.reasoning}"
+    )
+
+    return result
 
 
 def extract_event_info(user_input: str) -> EventExtraction:
