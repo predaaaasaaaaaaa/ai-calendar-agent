@@ -234,16 +234,16 @@ def create_google_calendar_event(event_details: EventDetails) -> Optional[str]:
         start_time = datetime.fromisoformat(event_details.date)
         end_time = start_time + timedelta(minutes=event_details.duration_minutes)
 
-        # Prepare event body for Google Calendar API
+       # Prepare event body for Google Calendar API
         event_body = {
             "summary": event_details.name,
-            "start": {
+             "start": {
                 "dateTime": start_time.isoformat(),
-                "timeZone": "UTC",
+                "timeZone": "Europe/Paris", 
             },
             "end": {
                 "dateTime": end_time.isoformat(),
-                "timeZone": "UTC",
+                "timeZone": "Europe/Paris",
             },
         }
 
@@ -557,8 +557,8 @@ def update_google_calendar_event(
 
             new_end = new_start + timedelta(minutes=duration)
 
-            event["start"] = {"dateTime": new_start.isoformat(), "timeZone": "UTC"}
-            event["end"] = {"dateTime": new_end.isoformat(), "timeZone": "UTC"}
+            event["start"] = {"dateTime": new_start.isoformat(), "timeZone": "Europe/Paris"}
+            event["end"] = {"dateTime": new_end.isoformat(), "timeZone": "Europe/Paris"}
             logger.info(f"Updating date to: {new_start}")
 
         elif updates.new_duration_minutes:
@@ -567,7 +567,7 @@ def update_google_calendar_event(
                 event["start"]["dateTime"].replace("Z", "+00:00")
             )
             new_end = old_start + timedelta(minutes=updates.new_duration_minutes)
-            event["end"] = {"dateTime": new_end.isoformat(), "timeZone": "UTC"}
+            event["end"] = {"dateTime": new_end.isoformat(), "timeZone": "Europe/Paris"}
             logger.info(f"Updating duration to: {updates.new_duration_minutes} minutes")
 
         if updates.new_location:
@@ -749,11 +749,24 @@ def parse_event_details(description: str) -> EventDetails:
             {
                 "role": "system",
                 "content": f"""{date_context} Extract detailed event information. 
-                
+
+**CRITICAL TIMEZONE RULE**: 
+- User is in UTC+1 timezone (Europe/Paris, Berlin, etc.)
+- When user says "2pm" they mean "14:00" in their local time
+- Output dates in ISO 8601 WITHOUT timezone offset (e.g., 2026-02-09T14:00:00)
+- The system will handle UTC conversion
+
+**CRITICAL DATE RULES**:
+- Today is Saturday, February 7, 2026
+- "next Monday" = February 9, 2026 (2 days from now)
+- "tomorrow" = Sunday, February 8, 2026
+- "this Monday" = February 9, 2026
+- "next week" = starts February 14, 2026
+
 Important rules:
 - When dates reference 'next Tuesday' or similar relative dates, use the current date as reference
-- For participants, ONLY include email addresses if explicitly provided. If only names are given (like 'Alice' or 'Bob'), return an empty participants list
-- Use ISO 8601 format for dates (YYYY-MM-DDTHH:MM:SS)
+- For participants, ONLY include email addresses if explicitly provided. If only names are given, return an empty participants list
+- Use ISO 8601 format for dates (YYYY-MM-DDTHH:MM:SS) WITHOUT timezone
 - If no specific time is mentioned, default to 09:00:00
 - If duration is not mentioned, default to 60 minutes
 """,
