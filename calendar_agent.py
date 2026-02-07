@@ -585,9 +585,9 @@ def ask_user_confirmation(message: str) -> bool:
     """Ask user for yes/no confirmation"""
     while True:
         response = input(f"\n{message} (yes/no): ").strip().lower()
-        if response in ['yes', 'y']:
+        if response in ["yes", "y"]:
             return True
-        elif response in ['no', 'n']:
+        elif response in ["no", "n"]:
             return False
         else:
             print("   Please answer 'yes' or 'no'")
@@ -886,8 +886,84 @@ Determine what they want to change:
 
     elif intent.intent == "delete":
         logger.info("Routing to DELETE operation")
-        print(f"\n DELETE feature coming soon!")
-        print(f"   I understand you want to: {intent.reasoning}")
+
+        # Step 1: Extract search criteria to find events to delete
+        search_criteria = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""Extract information to identify which event(s) the user wants to delete.
+                
+Today is {datetime.now().strftime("%A, %B %d, %Y")}.
+
+Look for:
+- Keywords from the event name
+- Date/time references (today, tomorrow, next Tuesday, etc.)
+- Whether they want to delete multiple events or just one
+""",
+                },
+                {"role": "user", "content": user_input},
+            ],
+            response_model=EventSearchCriteria,
+        )
+
+    # Step 2: Search for matching events
+    events = search_events(search_criteria)
+
+    if not events:
+        print("\n❌ I couldn't find any matching events to delete.")
+        print("   Try being more specific about which event you want to remove.")
+        return None
+
+    # Step 3: Determine risk level
+    num_events = len(events)
+    if num_events == 1:
+        risk_level = "low"
+    elif num_events <= 3:
+        risk_level = "medium"
+    else:
+        risk_level = "high"
+
+    # Step 4: Show what will be deleted
+    print(f"\n Found {num_events} event(s) to delete:")
+    display_events(events)
+
+    # Step 5: SECURITY CHECK - Ask for confirmation
+    event_names = [e.get("summary", "Untitled") for e in events]
+
+    if num_events == 1:
+        confirmation_msg = f"⚠️  Are you sure you want to delete '{event_names[0]}'?"
+    else:
+        confirmation_msg = (
+            f"⚠️  Are you sure you want to delete these {num_events} events?"
+        )
+
+    if not ask_user_confirmation(confirmation_msg):
+        print("\n✋ Deletion cancelled. No events were removed.")
+        logger.info("User cancelled deletion")
+        return None
+
+    # Step 6: Delete the events
+    print("\n🔄 Deleting events...")
+    deleted_count = 0
+    failed_count = 0
+
+    for event in events:
+        event_id = event["id"]
+        if delete_google_calendar_event(event_id):
+            deleted_count += 1
+        else:
+            failed_count += 1
+
+    # Step 7: Report results
+    print(f"\n✅ Successfully deleted {deleted_count} event(s)")
+    if failed_count > 0:
+        print(f"❌ Failed to delete {failed_count} event(s)")
+
+        logger.info(
+            f"Deletion complete: {deleted_count} deleted, {failed_count} failed"
+        )
         return None
 
     elif intent.intent == "create":
