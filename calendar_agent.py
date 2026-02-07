@@ -16,7 +16,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import json
+from collections import defaultdict
+from datetime import datetime, timedelta
 
+# Track operations per session
+operation_tracker = defaultdict(list)
+MAX_DELETES_PER_HOUR = 10
+MAX_UPDATES_PER_HOUR = 20
 
 # Set up logging configuration
 logging.basicConfig(
