@@ -581,6 +581,18 @@ def delete_google_calendar_event(event_id: str) -> bool:
         return False
 
 
+def ask_user_confirmation(message: str) -> bool:
+    """Ask user for yes/no confirmation"""
+    while True:
+        response = input(f"\n{message} (yes/no): ").strip().lower()
+        if response in ['yes', 'y']:
+            return True
+        elif response in ['no', 'n']:
+            return False
+        else:
+            print("   Please answer 'yes' or 'no'")
+
+
 # Step 4: Define the LLM functions
 
 
