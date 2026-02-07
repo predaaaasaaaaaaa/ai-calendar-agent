@@ -355,25 +355,25 @@ def list_calendar_events(
 def search_events(search_criteria: EventSearchCriteria) -> list[dict]:
     """
     Search for events matching criteria
-
+    
     Args:
         search_criteria: Keywords, date filters, time filters
-
+    
     Returns:
         List of matching events
     """
     logger.info("Searching for events matching criteria")
     logger.debug(f"Search criteria: {search_criteria.model_dump()}")
-
+    
     # Determine time range based on date_filter
-    time_min = datetime.utcnow()
-    time_max = time_min + timedelta(days=30)  # Default: next 30 days
-
+    time_min = datetime.utcnow() - timedelta(days=7)  # Start 7 days ago
+    time_max = time_min + timedelta(days=37)  # Go 30 days forward
+    
     if search_criteria.date_filter:
         # Parse relative dates
         date_str = search_criteria.date_filter.lower()
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
+        
         if date_str == "today":
             time_min = today
             time_max = today + timedelta(days=1)
@@ -386,6 +386,49 @@ def search_events(search_criteria: EventSearchCriteria) -> list[dict]:
         elif date_str == "next week":
             time_min = today + timedelta(days=7)
             time_max = today + timedelta(days=14)
+        elif "monday" in date_str:
+            # Find next Monday
+            days_ahead = 0 - today.weekday()  # Monday is 0
+            if days_ahead <= 0:  # Target day already happened this week
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
+        elif "tuesday" in date_str:
+            days_ahead = 1 - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
+        elif "wednesday" in date_str:
+            days_ahead = 2 - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
+        elif "thursday" in date_str:
+            days_ahead = 3 - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
+        elif "friday" in date_str:
+            days_ahead = 4 - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
+        elif "saturday" in date_str:
+            days_ahead = 5 - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
+        elif "sunday" in date_str:
+            days_ahead = 6 - today.weekday()
+            if days_ahead <= 0:
+                days_ahead += 7
+            time_min = today + timedelta(days=days_ahead)
+            time_max = time_min + timedelta(days=1)
         else:
             # Try to parse as ISO date
             try:
@@ -393,33 +436,48 @@ def search_events(search_criteria: EventSearchCriteria) -> list[dict]:
                 time_min = parsed_date.replace(hour=0, minute=0, second=0)
                 time_max = time_min + timedelta(days=1)
             except:
-                logger.warning(
-                    f"Could not parse date filter: {search_criteria.date_filter}"
-                )
-
+                logger.warning(f"Could not parse date filter: {search_criteria.date_filter}")
+    
     # Get events in time range
-    all_events = list_calendar_events(
-        time_min=time_min, time_max=time_max, max_results=50
-    )
-
+    all_events = list_calendar_events(time_min=time_min, time_max=time_max, max_results=50)
+    
     if not all_events:
         logger.info("No events found in time range")
         return []
-
-    # Filter by keywords if provided
+    
+    # Filter by keywords if provided - IMPROVED LOGIC
     if search_criteria.event_name_keywords:
         keywords_lower = [kw.lower() for kw in search_criteria.event_name_keywords]
         filtered_events = []
-
+        
         for event in all_events:
             event_summary = event.get("summary", "").lower()
-            # Check if any keyword matches
-            if any(keyword in event_summary for keyword in keywords_lower):
+            # Check if ANY word from the event name contains ANY keyword (partial matching)
+            event_words = event_summary.split()
+            
+            match_found = False
+            for keyword in keywords_lower:
+                for word in event_words:
+                    if keyword in word or word in keyword:  # Partial match both ways
+                        match_found = True
+                        break
+                if match_found:
+                    break
+            
+            if match_found:
                 filtered_events.append(event)
-
+        
         logger.info(f"Filtered to {len(filtered_events)} events matching keywords")
+        
+        # If keyword filtering returned nothing, return all events in time range
+        # (Sometimes LLM extracts wrong keywords)
+        if not filtered_events and all_events:
+            logger.warning("Keyword filter returned 0 results, returning all events in time range")
+            return all_events
+        
         return filtered_events
-
+    
+    # No keywords, return all events in time range
     return all_events
 
 
@@ -920,9 +978,17 @@ If they mention specific event names or keywords, extract those.
                     
 Today is {datetime.now().strftime("%A, %B %d, %Y")}.
 
+IMPORTANT: Extract the CURRENT location of the event, NOT the new date/time they want to move it to.
+
+For example:
+- "move nikmok event to monday at 2pm" → Search for event with keyword "nikmok", don't filter by monday
+- "reschedule my meeting tomorrow to friday" → Search for events tomorrow (current date), not friday
+- "change my dentist appointment on tuesday to wednesday" → Search on tuesday (current date)
+
 Look for:
-- Keywords from the event name
-- Date/time references (today, tomorrow, next Tuesday, etc.)
+- Keywords from the event name (REQUIRED)
+- CURRENT date/time of the event (if mentioned)
+- Do NOT use the target/new date as a filter
 """,
                 },
                 {"role": "user", "content": user_input},
