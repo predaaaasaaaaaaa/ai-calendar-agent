@@ -307,6 +307,77 @@ def list_calendar_events(
         return []
 
 
+def search_events(search_criteria: EventSearchCriteria) -> list[dict]:
+    """
+    Search for events matching criteria
+
+    Args:
+        search_criteria: Keywords, date filters, time filters
+
+    Returns:
+        List of matching events
+    """
+    logger.info("Searching for events matching criteria")
+    logger.debug(f"Search criteria: {search_criteria.model_dump()}")
+
+    # Determine time range based on date_filter
+    time_min = datetime.utcnow()
+    time_max = time_min + timedelta(days=30)  # Default: next 30 days
+
+    if search_criteria.date_filter:
+        # Parse relative dates
+        date_str = search_criteria.date_filter.lower()
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if date_str == "today":
+            time_min = today
+            time_max = today + timedelta(days=1)
+        elif date_str == "tomorrow":
+            time_min = today + timedelta(days=1)
+            time_max = today + timedelta(days=2)
+        elif date_str == "this week":
+            time_min = today
+            time_max = today + timedelta(days=7)
+        elif date_str == "next week":
+            time_min = today + timedelta(days=7)
+            time_max = today + timedelta(days=14)
+        else:
+            # Try to parse as ISO date
+            try:
+                parsed_date = datetime.fromisoformat(search_criteria.date_filter)
+                time_min = parsed_date.replace(hour=0, minute=0, second=0)
+                time_max = time_min + timedelta(days=1)
+            except:
+                logger.warning(
+                    f"Could not parse date filter: {search_criteria.date_filter}"
+                )
+
+    # Get events in time range
+    all_events = list_calendar_events(
+        time_min=time_min, time_max=time_max, max_results=50
+    )
+
+    if not all_events:
+        logger.info("No events found in time range")
+        return []
+
+    # Filter by keywords if provided
+    if search_criteria.event_name_keywords:
+        keywords_lower = [kw.lower() for kw in search_criteria.event_name_keywords]
+        filtered_events = []
+
+        for event in all_events:
+            event_summary = event.get("summary", "").lower()
+            # Check if any keyword matches
+            if any(keyword in event_summary for keyword in keywords_lower):
+                filtered_events.append(event)
+
+        logger.info(f"Filtered to {len(filtered_events)} events matching keywords")
+        return filtered_events
+
+    return all_events
+
+
 # Step 4: Define the LLM functions
 
 
