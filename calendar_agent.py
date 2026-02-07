@@ -378,6 +378,45 @@ def search_events(search_criteria: EventSearchCriteria) -> list[dict]:
     return all_events
 
 
+def display_events(events: list[dict]) -> None:
+    """Display events in a user-friendly format"""
+    if not events:
+        print("   No events found.")
+        return
+
+    print(f"\n   Found {len(events)} event(s):\n")
+
+    for i, event in enumerate(events, 1):
+        summary = event.get("summary", "Untitled Event")
+        start = event.get("start", {})
+        event_id = event.get("id", "unknown")
+
+        # Parse start time
+        if "dateTime" in start:
+            start_time = datetime.fromisoformat(
+                start["dateTime"].replace("Z", "+00:00")
+            )
+            time_str = start_time.strftime("%A, %B %d at %I:%M %p")
+        elif "date" in start:
+            time_str = start["date"]
+        else:
+            time_str = "Unknown time"
+
+        # Get attendees
+        attendees = event.get("attendees", [])
+        attendee_str = ""
+        if attendees:
+            attendee_emails = [a.get("email", "") for a in attendees[:3]]
+            attendee_str = f" | Attendees: {', '.join(attendee_emails)}"
+            if len(attendees) > 3:
+                attendee_str += f" (+{len(attendees) - 3} more)"
+
+        print(f"   {i}. {summary}")
+        print(f"      📅 {time_str}{attendee_str}")
+        print(f"      🔗 ID: {event_id[:20]}...")
+        print()
+
+
 # Step 4: Define the LLM functions
 
 
