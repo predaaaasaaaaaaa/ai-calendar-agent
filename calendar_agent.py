@@ -25,14 +25,6 @@ MAX_DELETES_PER_HOUR = 10
 MAX_UPDATES_PER_HOUR = 20
 MAX_EVENTS_PER_DELETE = 5
 
-# Statistics tracking
-session_stats = {
-    "created": 0,
-    "updated": 0,
-    "deleted": 0,
-    "listed": 0
-}
-
 # Set up logging configuration
 logging.basicConfig(
     level=logging.INFO,
