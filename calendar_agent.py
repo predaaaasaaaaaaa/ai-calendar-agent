@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 operation_tracker = defaultdict(list)
 MAX_DELETES_PER_HOUR = 10
 MAX_UPDATES_PER_HOUR = 20
+MAX_EVENTS_PER_DELETE = 5
 
 # Set up logging configuration
 logging.basicConfig(
@@ -1013,7 +1014,13 @@ Look for:
 
     if not events:
         print("\n❌ I couldn't find any matching events to delete.")
-        print("   Try being more specific about which event you want to remove.")
+        return None
+
+    # SECURITY CHECK 3: Maximum events limit
+    if len(events) > MAX_EVENTS_PER_DELETE:
+        print(f"\n🛑 SECURITY LIMIT: Found {len(events)} events, but I can only delete up to {MAX_EVENTS_PER_DELETE} at once.")
+        print(f"   Please be more specific to target fewer events.")
+        logger.warning(f"Blocked deletion of {len(events)} events (exceeds limit)")
         return None
 
     # Step 3: Determine risk level
